@@ -245,99 +245,8 @@ const Dashboard = () => {
     }, [userId, userProfileDocRef]);
 
 
-    useEffect(() => {
-        const Chart = window.Chart;
-
-        if (chartRef.current && weightData.length > 0) {
-            if (chartInstanceRef.current) {
-                chartInstanceRef.current.destroy();
-            }
-
-            const dates = weightData.map(entry => entry.date);
-            const weights = weightData.map(entry => entry.weight);
-
-            const ctx = chartRef.current.getContext('2d');
-            chartInstanceRef.current = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: dates,
-                    datasets: [{
-                        label: 'Weight (lbs)',
-                        data: weights,
-                        borderColor: 'rgb(75, 192, 192)',
-                        tension: 0.1,
-                        fill: false,
-                        pointBackgroundColor: 'rgb(75, 192, 192)',
-                        pointBorderColor: 'rgb(75, 192, 192)',
-                        pointRadius: 5,
-                        pointHoverRadius: 7,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    scales: {
-                        x: {
-                            type: 'time',
-                            time: {
-                                unit: 'day',
-                                tooltipFormat: 'MMM d,yyyy',
-                                displayFormats: {
-                                    day: 'MMM d'
-                                }
-                            },
-                            title: {
-                                display: true,
-                                text: 'Date',
-                                color: '#555',
-                                font: { size: 14 }
-                            },
-                            ticks: {
-                                color: '#666'
-                            }
-                        },
-                        y: {
-                            beginAtZero: false,
-                            title: {
-                                display: true,
-                                text: 'Weight (lbs)',
-                                color: '#555',
-                                font: { size: 14 }
-                            },
-                            ticks: {
-                                color: '#666'
-                            }
-                        }
-                    }
-                },
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            title: function(context) {
-                                return context[0].label;
-                            },
-                            label: function(context) {
-                                return 'Weight: ' + context.parsed.y + ' lbs';
-                            }
-                        },
-                        backgroundColor: 'rgba(0,0,0,0.7)',
-                        titleColor: '#fff',
-                        bodyColor: '#fff',
-                        padding: 10,
-                        cornerRadius: 8,
-                    },
-                    legend: {
-                        display: false
-                    }
-                }
-            }
-        });
-        } else if (chartRef.current && weightData.length === 0) {
-            if (chartInstanceRef.current) {
-                chartInstanceRef.current.destroy();
-            }
-        }
-    }, [weightData]);
+// Chart rendering logic should be inside a useEffect, not here.
+// If you want to render a Chart.js chart, place the code inside a useEffect that depends on weightData and chartRef.
 
     const addWeightEntry = async (e) => {
         e.preventDefault();
@@ -591,7 +500,6 @@ export default function App() {
 
 const AppContent = () => {
     const { currentUser, loadingAuth } = useContext(AuthContext);
-    // Removed currentPage state as navigation is no longer present.
 
     // Overall loading state for the entire application
     const isAppLoading = loadingAuth;
@@ -601,7 +509,7 @@ const AppContent = () => {
             <div className="min-h-screen flex items-center justify-center bg-gray-100">
                 <div className="flex flex-col items-center">
                     <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
-                    <p className="text-gray-700 text-lg">Loading application...</p>
+                    <p className="text-gray-700 text-lg">Loading...</p>
                 </div>
             </div>
         );
@@ -611,7 +519,6 @@ const AppContent = () => {
         return <LoginPage />;
     }
 
-    // Directly render Dashboard as there are no other pages in this version
     return <Dashboard />;
 };
 
