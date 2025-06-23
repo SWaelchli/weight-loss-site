@@ -1,16 +1,12 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
-// Import ReactDOM from react-dom/client for React 18+
-import ReactDOM from 'react-dom/client'; 
+import ReactDOM from 'react-dom/client';
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInWithCustomToken, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth'; // Removed signInAnonymously import
-import { getFirestore, doc, collection, query, where, addDoc, getDocs, onSnapshot, deleteDoc, setDoc } from 'firebase/firestore';
+import { getAuth, signInWithCustomToken, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import { getFirestore, doc, collection, query, where, addDoc, getDocs, onSnapshot, deleteDoc, setDoc, getDoc } from 'firebase/firestore';
 // Chart and adapter are now loaded via CDN in index.html, no direct import needed here
-// import Chart from 'chart.js/auto'; // This line is commented out as Chart is globally available
-// import 'chartjs-adapter-date-fns'; // This line is commented out as adapter is globally available
 
 // --- Firebase Initialization ---
 // The actual Firebase configuration for your project is now hardcoded here.
-// This ensures the app can initialize Firebase correctly when deployed on Netlify.
 const firebaseConfig = {
   apiKey: "AIzaSyBstQSGGPn9O5i91lOHqpykQuBqqt9yQhY",
   authDomain: "weight-loss-tracker-app-ff93a.firebaseapp.com",
@@ -20,12 +16,9 @@ const firebaseConfig = {
   appId: "1:419438071189:web:6723d25c037ce03e63fa9c"
 };
 
-// We use the projectId from your firebaseConfig as the appId for Firestore rules consistency.
-const appId = firebaseConfig.projectId; 
-// initialAuthToken is typically for Canvas environment previews and is kept for compatibility.
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
+const appId = firebaseConfig.projectId;
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
-// Initialize Firebase App
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const auth = getAuth(app);
@@ -47,27 +40,22 @@ const AuthProvider = ({ children }) => {
             setLoadingAuth(false);
         });
 
-        // This function handles the initial sign-in attempt for the Canvas environment.
-        // On Netlify, initialAuthToken will be null, and no anonymous sign-in is desired.
         const signInWithCanvasToken = async () => {
             if (initialAuthToken && !currentUser) {
                 try {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } catch (error) {
                     console.error("Error signing in with custom token (Canvas):", error);
-                    // On Netlify, we explicitly do NOT want anonymous sign-in if initialAuthToken fails/is absent.
-                    // The app should just present the login page if not authenticated.
                 }
             }
-            // No 'else if (!currentUser)' for anonymous sign-in here, as desired.
         };
 
-        if (loadingAuth) { // Only try initial sign-in if still loading auth
+        if (loadingAuth) {
              signInWithCanvasToken();
         }
 
         return () => unsubscribe();
-    }, [initialAuthToken, currentUser, loadingAuth]); // Added currentUser and loadingAuth to dependencies
+    }, [initialAuthToken, currentUser, loadingAuth]);
 
     return (
         <AuthContext.Provider value={{ currentUser, loadingAuth, auth }}>
@@ -180,7 +168,7 @@ const LoginPage = () => {
 };
 
 // --- Dashboard Component (Main App Content) ---
-const Dashboard = () => {
+const Dashboard = ({ navigateTo }) => {
     const { currentUser, loadingAuth, auth } = useContext(AuthContext);
     const [date, setDate] = useState('');
     const [weight, setWeight] = useState('');
@@ -189,12 +177,11 @@ const Dashboard = () => {
     const [loadingData, setLoadingData] = useState(true);
     const [error, setError] = useState('');
     const chartRef = React.useRef(null);
-    const chartInstanceRef = React.useRef(null); // Ref to hold the Chart.js instance
+    const chartInstanceRef = React.useRef(null);
 
     const userId = currentUser?.uid;
 
     useEffect(() => {
-        // Set today's date as default for the date input
         const today = new Date();
         const year = today.getFullYear();
         const month = (today.getMonth() + 1).toString().padStart(2, '0');
@@ -212,8 +199,6 @@ const Dashboard = () => {
         setLoadingData(true);
         setError('');
 
-        // Listen for real-time updates from Firestore
-        // Data is stored in /artifacts/{appId}/users/{userId}/weightEntries
         const q = query(collection(db, `artifacts/${appId}/users/${userId}/weightEntries`));
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -221,7 +206,6 @@ const Dashboard = () => {
             snapshot.forEach((doc) => {
                 fetchedData.push({ id: doc.id, ...doc.data() });
             });
-            // Sort data by date to ensure chart and table are chronological
             fetchedData.sort((a, b) => new Date(a.date) - new Date(b.date));
             setWeightData(fetchedData);
             setLoadingData(false);
@@ -231,17 +215,14 @@ const Dashboard = () => {
             setLoadingData(false);
         });
 
-        // Cleanup the listener on component unmount or userId change
         return () => unsubscribe();
     }, [userId]);
 
     useEffect(() => {
-        // Render or update chart whenever weightData changes
-        // Access Chart from the global window object since it's loaded via CDN
         const Chart = window.Chart;
 
         if (chartInstanceRef.current) {
-            chartInstanceRef.current.destroy(); // Destroy previous chart instance
+            chartInstanceRef.current.destroy();
         }
 
         if (weightData.length === 0) {
@@ -270,16 +251,15 @@ const Dashboard = () => {
             },
             options: {
                 responsive: true,
-                maintainAspectRatio: false, // Allows flexible height
+                maintainAspectRatio: false,
                 scales: {
                     x: {
                         type: 'time',
                         time: {
                             unit: 'day',
-                            // CORRECTED: 'D' for day of month should be 'd' in date-fns format string
                             tooltipFormat: 'MMM d,yyyy',
                             displayFormats: {
-                                day: 'MMM d' // CORRECTED: 'D' for day of month should be 'd'
+                                day: 'MMM d'
                             }
                         },
                         title: {
@@ -326,7 +306,7 @@ const Dashboard = () => {
                         cornerRadius: 8,
                     },
                     legend: {
-                        display: false // Hide dataset label as it's clear from y-axis
+                        display: false
                     }
                 }
             }
@@ -348,7 +328,6 @@ const Dashboard = () => {
 
         if (newDate && !isNaN(newWeight)) {
             try {
-                // Check if an entry for this date already exists for the current user
                 const q = query(
                     collection(db, `artifacts/${appId}/users/${userId}/weightEntries`),
                     where("date", "==", newDate)
@@ -356,7 +335,6 @@ const Dashboard = () => {
                 const querySnapshot = await getDocs(q);
 
                 if (!querySnapshot.empty) {
-                    // Update existing entry
                     const docToUpdate = querySnapshot.docs[0];
                     await setDoc(doc(db, `artifacts/${appId}/users/${userId}/weightEntries`, docToUpdate.id), {
                         date: newDate,
@@ -365,7 +343,6 @@ const Dashboard = () => {
                     });
                     showCustomMessage('Entry updated successfully!', 'success');
                 } else {
-                    // Add new entry
                     await addDoc(collection(db, `artifacts/${appId}/users/${userId}/weightEntries`), {
                         date: newDate,
                         weight: newWeight,
@@ -435,7 +412,6 @@ const Dashboard = () => {
 
     return (
         <div className="min-h-screen flex flex-col bg-gray-50 font-inter">
-            {/* Header */}
             <header className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-4 shadow-lg">
                 <div className="max-w-4xl mx-auto flex justify-between items-center">
                     <h1 className="text-3xl font-extrabold tracking-tight">Our Weight Loss Journey</h1>
@@ -453,9 +429,26 @@ const Dashboard = () => {
                         </button>
                     </div>
                 </div>
+                {/* Navigation Bar */}
+                <nav className="bg-blue-800 text-white mt-4 py-2 shadow-md">
+                    <div className="max-w-4xl mx-auto flex justify-around items-center">
+                        <button
+                            onClick={() => navigateTo('dashboard')}
+                            className="px-4 py-2 rounded-md hover:bg-blue-600 transition duration-200 text-lg font-medium"
+                        >
+                            Dashboard
+                        </button>
+                        <button
+                            onClick={() => navigateTo('bmiCalculator')}
+                            className="px-4 py-2 rounded-md hover:bg-blue-600 transition duration-200 text-lg font-medium"
+                        >
+                            BMI Calculator
+                        </button>
+                        {/* Future navigation items can go here */}
+                    </div>
+                </nav>
             </header>
 
-            {/* Main Content */}
             <main className="flex-grow max-w-4xl mx-auto p-6 bg-white rounded-xl shadow-lg my-8">
                 {error && (
                     <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6" role="alert">
@@ -464,7 +457,6 @@ const Dashboard = () => {
                     </div>
                 )}
 
-                {/* Add Weight Section */}
                 <section className="mb-8 p-6 border border-gray-200 rounded-lg shadow-sm bg-white">
                     <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Add Your Weight</h2>
                     <form onSubmit={addWeightEntry} className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -520,7 +512,6 @@ const Dashboard = () => {
                     </form>
                 </section>
 
-                {/* Progress Chart Section */}
                 <section className="mb-8 p-6 border border-gray-200 rounded-lg shadow-sm bg-white">
                     <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Our Progress</h2>
                     {weightData.length > 0 ? (
@@ -532,7 +523,6 @@ const Dashboard = () => {
                     )}
                 </section>
 
-                {/* Weight History Section */}
                 <section className="p-6 border border-gray-200 rounded-lg shadow-sm bg-white">
                     <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Weight History</h2>
                     {weightData.length > 0 ? (
@@ -571,14 +561,268 @@ const Dashboard = () => {
                 </section>
             </main>
 
-            {/* Footer */}
-            <footer className="bg-gray-800 text-white p-6 text-center shadow-inner mt-8">
+            <footer>
                 <p className="text-sm">&copy; 2025 Our Journey. All rights reserved.</p>
             </footer>
+        </div>
+    );
+};
 
+// --- BMI Calculator Component ---
+const BMICalculator = ({ navigateTo }) => {
+    const { currentUser } = useContext(AuthContext);
+    const [heightFt, setHeightFt] = useState('');
+    const [heightIn, setHeightIn] = useState('');
+    const [bmi, setBmi] = useState(null);
+    const [bmiCategory, setBmiCategory] = useState('');
+    const [error, setError] = useState('');
+    const [loadingHeight, setLoadingHeight] = useState(true);
+
+    const userId = currentUser?.uid;
+    const userProfileDocRef = userId ? doc(db, `artifacts/${appId}/users/${userId}/profile/userProfile`) : null;
+
+    // Load height from Firestore
+    useEffect(() => {
+        if (!userProfileDocRef) {
+            setLoadingHeight(false);
+            return;
+        }
+
+        const fetchHeight = async () => {
+            try {
+                const docSnap = await getDoc(userProfileDocRef);
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    setHeightFt(data.heightFt || '');
+                    setHeightIn(data.heightIn || '');
+                }
+            } catch (err) {
+                console.error("Error loading height:", err);
+                setError("Failed to load height. Please try again.");
+            } finally {
+                setLoadingHeight(false);
+            }
+        };
+        fetchHeight();
+    }, [userProfileDocRef]);
+
+    const handleCalculateBMI = async () => {
+        setError('');
+        if (heightFt === '' || heightIn === '' || isNaN(parseFloat(heightFt)) || isNaN(parseFloat(heightIn))) {
+            setError('Please enter valid height in feet and inches.');
+            setBmi(null);
+            setBmiCategory('');
+            return;
+        }
+
+        const totalInches = (parseFloat(heightFt) * 12) + parseFloat(heightIn);
+        // Assuming current weight is retrieved from the latest entry in weightData for the user
+        // For simplicity here, we'll ask for it. In a real app, you'd pull from state or db.
+        // For this calculator, we'll prompt for it if not provided in the component
+        // As an alternative, we could fetch the most recent weight for the logged-in user.
+        // For now, let's allow direct input of current weight here, or use a dummy.
+        // To avoid complexity, let's assume BMI is calculated based on user's input weight here for simplicity.
+        // If we want to use the *latest* recorded weight from the dashboard, we'd need to pass it as a prop
+        // or fetch it here. For a standalone calculator, direct input is fine.
+
+        let currentWeight; // placeholder for the current weight
+        const weightPrompt = window.prompt("Please enter your current weight in pounds for BMI calculation:");
+        if (weightPrompt === null || isNaN(parseFloat(weightPrompt))) {
+            setError("Current weight is required for BMI calculation.");
+            setBmi(null);
+            setBmiCategory('');
+            return;
+        }
+        currentWeight = parseFloat(weightPrompt);
+
+
+        if (totalInches <= 0 || currentWeight <= 0) {
+            setError('Height and weight must be positive values.');
+            setBmi(null);
+            setBmiCategory('');
+            return;
+        }
+
+        // Convert inches to meters and pounds to kilograms
+        const heightMeters = totalInches * 0.0254;
+        const weightKg = currentWeight * 0.453592;
+
+        const calculatedBmi = weightKg / (heightMeters * heightMeters);
+        setBmi(calculatedBmi);
+
+        let category = '';
+        if (calculatedBmi < 18.5) {
+            category = 'Underweight';
+        } else if (calculatedBmi >= 18.5 && calculatedBmi < 24.9) {
+            category = 'Normal weight';
+        } else if (calculatedBmi >= 25 && calculatedBmi < 29.9) {
+            category = 'Overweight';
+        } else {
+            category = 'Obesity';
+        }
+        setBmiCategory(category);
+
+        // Save height to Firestore
+        if (userProfileDocRef) {
+            try {
+                await setDoc(userProfileDocRef, { heightFt: parseFloat(heightFt), heightIn: parseFloat(heightIn) }, { merge: true });
+                showCustomMessage('Height saved successfully!', 'success');
+            } catch (err) {
+                console.error("Error saving height:", err);
+                setError("Failed to save height. Please try again.");
+            }
+        }
+    };
+
+    if (loadingHeight) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-100">
+                <div className="flex flex-col items-center">
+                    <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
+                    <p className="text-gray-700 text-lg">Loading BMI data...</p>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="p-6 bg-white rounded-xl shadow-lg">
+            <header className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-4 shadow-lg mb-8 rounded-lg">
+                <div className="max-w-4xl mx-auto flex justify-between items-center">
+                    <h1 className="text-3xl font-extrabold tracking-tight">BMI Calculator</h1>
+                    <button
+                        onClick={() => navigateTo('dashboard')}
+                        className="bg-white text-blue-600 px-4 py-2 rounded-full font-semibold shadow-md hover:bg-gray-100 transition duration-300 ease-in-out"
+                    >
+                        Back to Dashboard
+                    </button>
+                </div>
+            </header>
+            <main>
+                {error && (
+                    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6" role="alert">
+                        <strong className="font-bold">Error!</strong>
+                        <span className="block sm:inline ml-2">{error}</span>
+                    </div>
+                )}
+                <section className="mb-8 p-6 border border-gray-200 rounded-lg shadow-sm bg-white">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Calculate Your BMI</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label htmlFor="heightFt" className="block text-gray-700 text-sm font-semibold mb-2">
+                                Height (Feet):
+                            </label>
+                            <input
+                                type="number"
+                                id="heightFt"
+                                value={heightFt}
+                                onChange={(e) => setHeightFt(e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
+                                placeholder="e.g., 5"
+                            />
+                        </div>
+                        <div>
+                            <label htmlFor="heightIn" className="block text-gray-700 text-sm font-semibold mb-2">
+                                Height (Inches):
+                            </label>
+                            <input
+                                type="number"
+                                id="heightIn"
+                                value={heightIn}
+                                onChange={(e) => setHeightIn(e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
+                                placeholder="e.g., 8 (for 5'8'')"
+                            />
+                        </div>
+                        <div className="md:col-span-2">
+                            <button
+                                onClick={handleCalculateBMI}
+                                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-300 ease-in-out transform hover:scale-105"
+                            >
+                                Calculate BMI
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+                {bmi && (
+                    <section className="p-6 border border-gray-200 rounded-lg shadow-sm bg-white text-center">
+                        <h2 className="text-2xl font-bold text-gray-800 mb-4">Your BMI:</h2>
+                        <p className="text-5xl font-extrabold text-blue-700 mb-2">
+                            {bmi.toFixed(2)}
+                        </p>
+                        <p className="text-xl text-gray-700">
+                            Category: <span className="font-semibold">{bmiCategory}</span>
+                        </p>
+                        <p className="text-sm text-gray-500 mt-4">
+                            BMI Categories:
+                            <br/>Underweight = {'<'}18.5
+                            <br/>Normal weight = 18.5–24.9
+                            <br/>Overweight = 25–29.9
+                            <br/>Obesity = {'\u2265'}30
+                        </p>
+                    </section>
+                )}
+            </main>
+        </div>
+    );
+};
+
+// --- Main App Component ---
+export default function App() {
+    return (
+        <AuthProvider>
+            <AppContent />
+        </AuthProvider>
+    );
+}
+
+const AppContent = () => {
+    const { currentUser, loadingAuth } = useContext(AuthContext);
+    const [currentPage, setCurrentPage] = useState('dashboard'); // State to manage current "page"
+
+    // Function to navigate between pages
+    const navigateTo = (page) => {
+        setCurrentPage(page);
+    };
+
+    if (loadingAuth) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-gray-100">
+                <div className="flex flex-col items-center">
+                    <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
+                    <p className="text-gray-700 text-lg">Loading application...</p>
+                </div>
+            </div>
+        );
+    }
+
+    if (!currentUser) {
+        return <LoginPage />;
+    }
+
+    // Render current page based on state
+    let PageComponent;
+    switch (currentPage) {
+        case 'dashboard':
+            PageComponent = <Dashboard navigateTo={navigateTo} />;
+            break;
+        case 'bmiCalculator':
+            PageComponent = <BMICalculator navigateTo={navigateTo} />;
+            break;
+        // Add more cases for future sub-sites here
+        default:
+            PageComponent = <Dashboard navigateTo={navigateTo} />;
+            break;
+    }
+
+    return (
+        <div className="min-h-screen flex flex-col bg-gray-50 font-inter">
+            {PageComponent}
+            {/* The footer moved into Dashboard component for a consistent layout per page */}
             <style>
+                {/* Custom styles for loader */}
                 {`
-                /* Custom styles for loader */
                 .loader {
                     border-top-color: #3498db;
                     -webkit-animation: spinner 1.5s linear infinite;
@@ -600,43 +844,7 @@ const Dashboard = () => {
     );
 };
 
-// --- Main App Component ---
-export default function App() {
-    return (
-        <AuthProvider>
-            <AppContent />
-        </AuthProvider>
-    );
-}
-
-const AppContent = () => {
-    const { currentUser, loadingAuth } = useContext(AuthContext);
-
-    // If still loading authentication status, show loading indicator
-    if (loadingAuth) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-100">
-                <div className="flex flex-col items-center">
-                    <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
-                    <p className="text-gray-700 text-lg">Loading...</p>
-                </div>
-            </div>
-        );
-    }
-
-    // If currentUser is null (not logged in), show login page
-    // Removed the .isAnonymous check here, if currentUser is null, we present LoginPage
-    if (!currentUser) { 
-        return <LoginPage />;
-    }
-
-    // Otherwise, show the main dashboard
-    return <Dashboard />;
-};
-
 // --- Render the React App ---
-// This is the crucial part that mounts your React application to the DOM.
-// It uses ReactDOM.createRoot for React 18+ concurrent mode.
 const rootElement = document.getElementById('root');
 if (rootElement) {
     const root = ReactDOM.createRoot(rootElement);
