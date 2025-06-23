@@ -5,9 +5,10 @@ import { getAuth, signInWithCustomToken, signInWithEmailAndPassword, signOut, on
 import { getFirestore, doc, collection, query, where, addDoc, getDocs, onSnapshot, deleteDoc, setDoc, getDoc } from 'firebase/firestore';
 
 // --- Firebase Initialization ---
-// The actual Firebase configuration for your project is now hardcoded here.
+// Firebase configuration - API Key is now loaded from Netlify Environment Variables.
+// This ensures the key is not hardcoded in the public repository for security.
 const firebaseConfig = {
-  apiKey: "AIzaSyBstQSGGPn9O5i91lOHqpykQuBqqt9yQhY",
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY, // This value will be injected by Netlify during build
   authDomain: "weight-loss-tracker-app-ff93a.firebaseapp.com",
   projectId: "weight-loss-tracker-app-ff93a",
   storageBucket: "weight-loss-tracker-app-ff93a.firebasestorage.app",
@@ -175,8 +176,8 @@ const Dashboard = ({ navigateTo }) => {
     const [notes, setNotes] = useState('');
     const [targetCalories, setTargetCalories] = useState('');
     const [weightData, setWeightData] = useState([]);
-    const [loadingWeightData, setLoadingWeightData] = useState(true); // Specific loading for weight
-    const [loadingUserProfile, setLoadingUserProfile] = useState(true); // Specific loading for profile
+    const [loadingWeightData, setLoadingWeightData] = useState(true);
+    const [loadingUserProfile, setLoadingUserProfile] = useState(true);
     const [error, setError] = useState('');
     const chartRef = React.useRef(null);
     const chartInstanceRef = React.useRef(null);
@@ -215,11 +216,11 @@ const Dashboard = ({ navigateTo }) => {
             });
             fetchedData.sort((a, b) => new Date(a.date) - new Date(b.date));
             setWeightData(fetchedData);
-            setLoadingWeightData(false); // Set weight data loading to false
+            setLoadingWeightData(false);
         }, (err) => {
             console.error("Error fetching weight data:", err);
             setError("Failed to load weight data. Please try again.");
-            setLoadingWeightData(false); // Set to false even on error
+            setLoadingWeightData(false);
         });
 
         // Fetch user profile data using getDoc (one-time fetch)
@@ -230,31 +231,25 @@ const Dashboard = ({ navigateTo }) => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         setTargetCalories(data.targetCalories || '');
-                        // Also ensure height is loaded for BMI component if needed later
-                        // This Dashboard doesn't use height, but it's good practice for profile
                     } else {
-                        // Profile document doesn't exist yet, which is fine for new users
                         setTargetCalories('');
                     }
                 } catch (err) {
                     console.error("Error loading user profile:", err);
                     setError("Failed to load user profile data.");
                 } finally {
-                    setLoadingUserProfile(false); // Always set profile loading to false
+                    setLoadingUserProfile(false);
                 }
             } else {
-                setLoadingUserProfile(false); // No userProfileDocRef (e.g., userId is null), so stop loading profile
+                setLoadingUserProfile(false);
             }
         };
         fetchUserProfile();
 
-
-        // Cleanup function for useEffect
         return () => {
-            unsubscribeWeight(); // Unsubscribe from the real-time weight listener
-            // No explicit cleanup needed for getDoc, as it's a one-time fetch
+            unsubscribeWeight();
         };
-    }, [userId, userProfileDocRef]); // Dependencies: userId and userProfileDocRef
+    }, [userId, userProfileDocRef]);
 
 
     useEffect(() => {
@@ -332,10 +327,6 @@ const Dashboard = ({ navigateTo }) => {
                             },
                             label: function(context) {
                                 return 'Weight: ' + context.parsed.y + ' lbs';
-                            },
-                            afterBody: function(context) {
-                                const entry = weightData.find(d => d.date === context[0].label);
-                                return entry && entry.notes ? `Notes: ${entry.notes}` : '';
                             }
                         },
                         backgroundColor: 'rgba(0,0,0,0.7)',
@@ -462,7 +453,6 @@ const Dashboard = ({ navigateTo }) => {
         }
     };
 
-    // Combine all loading states for the Dashboard
     const isDashboardLoading = loadingAuth || loadingWeightData || loadingUserProfile;
 
     if (isDashboardLoading) {
