@@ -5,7 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "serve .",
-    "build": "esbuild src/index.js --bundle --minify --outfile=bundle.js --loader:.js=jsx --jsx=automatic --define:process.env.NODE_ENV='\"production\"' --define:process.env.REACT_APP_FIREBASE_API_KEY=\"$REACT_APP_FIREBASE_API_KEY\""
+    "build": "esbuild src/index.js --bundle --minify --outfile=bundle.js --loader:.js=jsx --jsx=automatic --define:process.env.NODE_ENV=\"\\\"production\\\"\" --define:process.env.REACT_APP_FIREBASE_API_KEY=\"\\\"$REACT_APP_FIREBASE_API_KEY\\\"\""
   },
   "dependencies": {
     "react": "^18.3.1",
