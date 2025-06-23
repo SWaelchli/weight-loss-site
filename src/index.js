@@ -173,6 +173,7 @@ const Dashboard = ({ navigateTo }) => {
     const [date, setDate] = useState('');
     const [weight, setWeight] = useState('');
     const [notes, setNotes] = useState('');
+    const [targetCalories, setTargetCalories] = useState(''); // New state for target calories
     const [weightData, setWeightData] = useState([]);
     const [loadingData, setLoadingData] = useState(true);
     const [error, setError] = useState('');
@@ -180,6 +181,8 @@ const Dashboard = ({ navigateTo }) => {
     const chartInstanceRef = React.useRef(null);
 
     const userId = currentUser?.uid;
+    const userProfileDocRef = userId ? doc(db, `artifacts/${appId}/users/${userId}/profile/userProfile`) : null;
+
 
     useEffect(() => {
         const today = new Date();
@@ -199,9 +202,9 @@ const Dashboard = ({ navigateTo }) => {
         setLoadingData(true);
         setError('');
 
+        // Fetch weight data
         const q = query(collection(db, `artifacts/${appId}/users/${userId}/weightEntries`));
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
+        const unsubscribeWeight = onSnapshot(q, (snapshot) => {
             const fetchedData = [];
             snapshot.forEach((doc) => {
                 fetchedData.push({ id: doc.id, ...doc.data() });
@@ -215,8 +218,28 @@ const Dashboard = ({ navigateTo }) => {
             setLoadingData(false);
         });
 
-        return () => unsubscribe();
-    }, [userId]);
+        // Fetch user profile data (including targetCalories)
+        const fetchUserProfile = async () => {
+            if (userProfileDocRef) {
+                try {
+                    const docSnap = await getDoc(userProfileDocRef);
+                    if (docSnap.exists()) {
+                        const data = docSnap.data();
+                        setTargetCalories(data.targetCalories || '');
+                    }
+                } catch (err) {
+                    console.error("Error loading user profile:", err);
+                    setError("Failed to load user profile data.");
+                }
+            }
+        };
+        fetchUserProfile();
+
+
+        return () => {
+            unsubscribeWeight();
+        }; // Only unsubscribe from weight data for now
+    }, [userId, userProfileDocRef]); // userProfileDocRef added as dependency
 
     useEffect(() => {
         const Chart = window.Chart;
@@ -340,7 +363,7 @@ const Dashboard = ({ navigateTo }) => {
                         date: newDate,
                         weight: newWeight,
                         notes: newNotes
-                    });
+                    }, { merge: true }); // Use merge to update existing fields without overwriting
                     showCustomMessage('Entry updated successfully!', 'success');
                 } else {
                     await addDoc(collection(db, `artifacts/${appId}/users/${userId}/weightEntries`), {
@@ -396,6 +419,29 @@ const Dashboard = ({ navigateTo }) => {
         } catch (err) {
             console.error("Error logging out:", err);
             setError("Failed to log out. Please try again.");
+        }
+    };
+
+    const handleSaveTargetCalories = async () => {
+        setError('');
+        if (!userId) {
+            setError("You must be logged in to save target calories.");
+            return;
+        }
+        if (targetCalories === '' || isNaN(parseFloat(targetCalories)) || parseFloat(targetCalories) <= 0) {
+            setError("Please enter a valid positive number for target calories.");
+            return;
+        }
+
+        try {
+            // Update the userProfile document with targetCalories
+            if (userProfileDocRef) {
+                await setDoc(userProfileDocRef, { targetCalories: parseFloat(targetCalories) }, { merge: true });
+                showCustomMessage('Target calories saved!', 'success');
+            }
+        } catch (err) {
+            console.error("Error saving target calories:", err);
+            setError("Failed to save target calories. Please try again.");
         }
     };
 
@@ -457,6 +503,37 @@ const Dashboard = ({ navigateTo }) => {
                     </div>
                 )}
 
+                {/* Target Calories Section */}
+                <section className="mb-8 p-6 border border-gray-200 rounded-lg shadow-sm bg-white">
+                    <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Your Daily Goals</h2>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
+                        <div>
+                            <label htmlFor="targetCalories" className="block text-gray-700 text-sm font-semibold mb-2">
+                                Target Daily Calories (kcal):
+                            </label>
+                            <input
+                                type="number"
+                                id="targetCalories"
+                                value={targetCalories}
+                                onChange={(e) => setTargetCalories(e.target.value)}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
+                                placeholder="e.g., 2000"
+                                required
+                            />
+                        </div>
+                        <div className="md:col-span-1">
+                            <button
+                                onClick={handleSaveTargetCalories}
+                                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2.5 px-4 rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition duration-300 ease-in-out transform hover:scale-105"
+                            >
+                                Save Target
+                            </button>
+                        </div>
+                    </div>
+                </section>
+
+
+                {/* Add Weight Section */}
                 <section className="mb-8 p-6 border border-gray-200 rounded-lg shadow-sm bg-white">
                     <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Add Your Weight</h2>
                     <form onSubmit={addWeightEntry} className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -616,63 +693,133 @@ const BMICalculator = ({ navigateTo }) => {
         }
 
         const totalInches = (parseFloat(heightFt) * 12) + parseFloat(heightIn);
-        // Assuming current weight is retrieved from the latest entry in weightData for the user
-        // For simplicity here, we'll ask for it. In a real app, you'd pull from state or db.
-        // For this calculator, we'll prompt for it if not provided in the component
-        // As an alternative, we could fetch the most recent weight for the logged-in user.
-        // For now, let's allow direct input of current weight here, or use a dummy.
-        // To avoid complexity, let's assume BMI is calculated based on user's input weight here for simplicity.
-        // If we want to use the *latest* recorded weight from the dashboard, we'd need to pass it as a prop
-        // or fetch it here. For a standalone calculator, direct input is fine.
+        let currentWeight;
+        // Using showCustomConfirm to replace window.prompt for better UI/UX
+        showCustomConfirm("Please enter your current weight in pounds for BMI calculation:", (confirmed) => {
+            if (confirmed) {
+                const weightPrompt = document.getElementById('bmiWeightInput').value; // Assuming an input field is created for this
+                if (weightPrompt === '' || isNaN(parseFloat(weightPrompt))) {
+                    setError("Current weight is required for BMI calculation.");
+                    setBmi(null);
+                    setBmiCategory('');
+                    return;
+                }
+                currentWeight = parseFloat(weightPrompt);
 
-        let currentWeight; // placeholder for the current weight
-        const weightPrompt = window.prompt("Please enter your current weight in pounds for BMI calculation:");
-        if (weightPrompt === null || isNaN(parseFloat(weightPrompt))) {
-            setError("Current weight is required for BMI calculation.");
-            setBmi(null);
-            setBmiCategory('');
-            return;
-        }
-        currentWeight = parseFloat(weightPrompt);
+                if (totalInches <= 0 || currentWeight <= 0) {
+                    setError('Height and weight must be positive values.');
+                    setBmi(null);
+                    setBmiCategory('');
+                    return;
+                }
 
+                const heightMeters = totalInches * 0.0254;
+                const weightKg = currentWeight * 0.453592;
+                const calculatedBmi = weightKg / (heightMeters * heightMeters);
+                setBmi(calculatedBmi);
 
-        if (totalInches <= 0 || currentWeight <= 0) {
-            setError('Height and weight must be positive values.');
-            setBmi(null);
-            setBmiCategory('');
-            return;
-        }
+                let category = '';
+                if (calculatedBmi < 18.5) {
+                    category = 'Underweight';
+                } else if (calculatedBmi >= 18.5 && calculatedBmi < 24.9) {
+                    category = 'Normal weight';
+                } else if (calculatedBmi >= 25 && calculatedBmi < 29.9) {
+                    category = 'Overweight';
+                } else {
+                    category = 'Obesity';
+                }
+                setBmiCategory(category);
 
-        // Convert inches to meters and pounds to kilograms
-        const heightMeters = totalInches * 0.0254;
-        const weightKg = currentWeight * 0.453592;
-
-        const calculatedBmi = weightKg / (heightMeters * heightMeters);
-        setBmi(calculatedBmi);
-
-        let category = '';
-        if (calculatedBmi < 18.5) {
-            category = 'Underweight';
-        } else if (calculatedBmi >= 18.5 && calculatedBmi < 24.9) {
-            category = 'Normal weight';
-        } else if (calculatedBmi >= 25 && calculatedBmi < 29.9) {
-            category = 'Overweight';
-        } else {
-            category = 'Obesity';
-        }
-        setBmiCategory(category);
-
-        // Save height to Firestore
-        if (userProfileDocRef) {
-            try {
-                await setDoc(userProfileDocRef, { heightFt: parseFloat(heightFt), heightIn: parseFloat(heightIn) }, { merge: true });
-                showCustomMessage('Height saved successfully!', 'success');
-            } catch (err) {
-                console.error("Error saving height:", err);
-                setError("Failed to save height. Please try again.");
+                // Save height to Firestore
+                if (userProfileDocRef) {
+                    setDoc(userProfileDocRef, { heightFt: parseFloat(heightFt), heightIn: parseFloat(heightIn) }, { merge: true })
+                        .then(() => showCustomMessage('Height saved successfully!', 'success'))
+                        .catch((err) => {
+                            console.error("Error saving height:", err);
+                            setError("Failed to save height. Please try again.");
+                        });
+                }
+            } else {
+                setError("BMI calculation cancelled. Current weight not provided.");
+                setBmi(null);
+                setBmiCategory('');
             }
-        }
+        }, true); // The `true` indicates it's a prompt for input, not just a yes/no.
     };
+    // Helper function for the BMI prompt to create an input field
+    const createInputPrompt = (message, onConfirm, showInput = false) => {
+        const promptBox = document.createElement('div');
+        promptBox.className = "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-8 rounded-lg shadow-xl z-50 text-center";
+        promptBox.innerHTML = `
+            <p class="text-lg font-semibold mb-4">${message}</p>
+            ${showInput ? '<input type="number" id="bmiWeightInput" class="w-full p-2 border rounded mb-4" placeholder="Enter weight in lbs">' : ''}
+            <div class="flex justify-center space-x-4">
+                <button id="promptOk" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">OK</button>
+                <button id="promptCancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancel</button>
+            </div>
+        `;
+        document.body.appendChild(promptBox);
+
+        document.getElementById('promptOk').onclick = () => {
+            onConfirm(true);
+            promptBox.remove();
+        };
+        document.getElementById('promptCancel').onclick = () => {
+            onConfirm(false);
+            promptBox.remove();
+        };
+    };
+
+    // Replace window.prompt with custom input prompt for BMI
+    const handleCalculateBMIWithPrompt = () => {
+        createInputPrompt("Please enter your current weight in pounds for BMI calculation:", (confirmed) => {
+            if (confirmed) {
+                // Now retrieve the value from the newly created input field
+                const weightValue = document.getElementById('bmiWeightInput').value;
+                const parsedWeight = parseFloat(weightValue);
+
+                if (isNaN(parsedWeight) || parsedWeight <= 0) {
+                    setError("Current weight is required and must be a positive number for BMI calculation.");
+                    setBmi(null);
+                    setBmiCategory('');
+                    return;
+                }
+                // Continue with the rest of BMI calculation logic
+                const totalInches = (parseFloat(heightFt) * 12) + parseFloat(heightIn);
+                const heightMeters = totalInches * 0.0254;
+                const weightKg = parsedWeight * 0.453592;
+                const calculatedBmi = weightKg / (heightMeters * heightMeters);
+                setBmi(calculatedBmi);
+
+                let category = '';
+                if (calculatedBmi < 18.5) {
+                    category = 'Underweight';
+                } else if (calculatedBmi >= 18.5 && calculatedBmi < 24.9) {
+                    category = 'Normal weight';
+                } else if (calculatedBmi >= 25 && calculatedBmi < 29.9) {
+                    category = 'Overweight';
+                } else {
+                    category = 'Obesity';
+                }
+                setBmiCategory(category);
+
+                // Save height to Firestore
+                if (userProfileDocRef) {
+                    setDoc(userProfileDocRef, { heightFt: parseFloat(heightFt), heightIn: parseFloat(heightIn) }, { merge: true })
+                        .then(() => showCustomMessage('Height saved successfully!', 'success'))
+                        .catch((err) => {
+                            console.error("Error saving height:", err);
+                            setError("Failed to save height. Please try again.");
+                        });
+                }
+            } else {
+                setError("BMI calculation cancelled. Current weight not provided.");
+                setBmi(null);
+                setBmiCategory('');
+            }
+        }, true); // `true` means show input field
+    };
+
 
     if (loadingHeight) {
         return (
@@ -736,7 +883,7 @@ const BMICalculator = ({ navigateTo }) => {
                         </div>
                         <div className="md:col-span-2">
                             <button
-                                onClick={handleCalculateBMI}
+                                onClick={handleCalculateBMIWithPrompt} // Use the new function with custom prompt
                                 className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-300 ease-in-out transform hover:scale-105"
                             >
                                 Calculate BMI
