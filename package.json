@@ -5,7 +5,7 @@
       "main": "src/index.js",
       "scripts": {
         "start": "serve .",
-        "build": "esbuild src/index.js --bundle --minify --outfile=dist/bundle.js --loader:.js=jsx"
+        "build": "esbuild src/index.js --bundle --minify --outfile=bundle.js --loader:.js=jsx"
       },
       "dependencies": {
         "react": "^18.3.1",
