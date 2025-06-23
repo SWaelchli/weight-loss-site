@@ -169,12 +169,11 @@ const LoginPage = () => {
 };
 
 // --- Dashboard Component (Main App Content) ---
-const Dashboard = ({ navigateTo }) => {
+const Dashboard = () => {
     const { currentUser, loadingAuth, auth } = useContext(AuthContext);
     const [date, setDate] = useState('');
     const [weight, setWeight] = useState('');
     const [notes, setNotes] = useState('');
-    const [targetCalories, setTargetCalories] = useState('');
     const [weightData, setWeightData] = useState([]);
     const [loadingWeightData, setLoadingWeightData] = useState(true);
     const [loadingUserProfile, setLoadingUserProfile] = useState(true);
@@ -194,7 +193,6 @@ const Dashboard = ({ navigateTo }) => {
         setDate(`${year}-${month}-${day}`);
     }, []);
 
-    // Effect for fetching ALL user-specific data (weight entries & user profile)
     useEffect(() => {
         if (!userId) {
             setWeightData([]);
@@ -207,7 +205,6 @@ const Dashboard = ({ navigateTo }) => {
         setLoadingUserProfile(true);
         setError('');
 
-        // Fetch weight data using onSnapshot (real-time listener)
         const q = query(collection(db, `artifacts/${appId}/users/${userId}/weightEntries`));
         const unsubscribeWeight = onSnapshot(q, (snapshot) => {
             const fetchedData = [];
@@ -223,16 +220,12 @@ const Dashboard = ({ navigateTo }) => {
             setLoadingWeightData(false);
         });
 
-        // Fetch user profile data using getDoc (one-time fetch)
         const fetchUserProfile = async () => {
             if (userProfileDocRef) {
                 try {
                     const docSnap = await getDoc(userProfileDocRef);
                     if (docSnap.exists()) {
-                        const data = docSnap.data();
-                        setTargetCalories(data.targetCalories || '');
-                    } else {
-                        setTargetCalories('');
+                        // Data loaded, but not set to state for this version
                     }
                 } catch (err) {
                     console.error("Error loading user profile:", err);
@@ -255,67 +248,65 @@ const Dashboard = ({ navigateTo }) => {
     useEffect(() => {
         const Chart = window.Chart;
 
-        if (chartInstanceRef.current) {
-            chartInstanceRef.current.destroy();
-        }
+        if (chartRef.current && weightData.length > 0) {
+            if (chartInstanceRef.current) {
+                chartInstanceRef.current.destroy();
+            }
 
-        if (weightData.length === 0) {
-            return;
-        }
+            const dates = weightData.map(entry => entry.date);
+            const weights = weightData.map(entry => entry.weight);
 
-        const dates = weightData.map(entry => entry.date);
-        const weights = weightData.map(entry => entry.weight);
-
-        const ctx = chartRef.current.getContext('2d');
-        chartInstanceRef.current = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: dates,
-                datasets: [{
-                    label: 'Weight (lbs)',
-                    data: weights,
-                    borderColor: 'rgb(75, 192, 192)',
-                    tension: 0.1,
-                    fill: false,
-                    pointBackgroundColor: 'rgb(75, 192, 192)',
-                    pointBorderColor: 'rgb(75, 192, 192)',
-                    pointRadius: 5,
-                    pointHoverRadius: 7,
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: {
-                        type: 'time',
-                        time: {
-                            unit: 'day',
-                            tooltipFormat: 'MMM d,yyyy',
-                            displayFormats: {
-                                day: 'MMM d'
+            const ctx = chartRef.current.getContext('2d');
+            chartInstanceRef.current = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: dates,
+                    datasets: [{
+                        label: 'Weight (lbs)',
+                        data: weights,
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1,
+                        fill: false,
+                        pointBackgroundColor: 'rgb(75, 192, 192)',
+                        pointBorderColor: 'rgb(75, 192, 192)',
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'day',
+                                tooltipFormat: 'MMM d,yyyy',
+                                displayFormats: {
+                                    day: 'MMM d'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Date',
+                                color: '#555',
+                                font: { size: 14 }
+                            },
+                            ticks: {
+                                color: '#666'
                             }
                         },
-                        title: {
-                            display: true,
-                            text: 'Date',
-                            color: '#555',
-                            font: { size: 14 }
-                        },
-                        ticks: {
-                            color: '#666'
-                        }
-                    },
-                    y: {
-                        beginAtZero: false,
-                        title: {
-                            display: true,
-                            text: 'Weight (lbs)',
-                            color: '#555',
-                            font: { size: 14 }
-                        },
-                        ticks: {
-                            color: '#666'
+                        y: {
+                            beginAtZero: false,
+                            title: {
+                                display: true,
+                                text: 'Weight (lbs)',
+                                color: '#555',
+                                font: { size: 14 }
+                            },
+                            ticks: {
+                                color: '#666'
+                            }
                         }
                     }
                 },
@@ -341,6 +332,11 @@ const Dashboard = ({ navigateTo }) => {
                 }
             }
         });
+        } else if (chartRef.current && weightData.length === 0) {
+            if (chartInstanceRef.current) {
+                chartInstanceRef.current.destroy();
+            }
+        }
     }, [weightData]);
 
     const addWeightEntry = async (e) => {
@@ -431,28 +427,6 @@ const Dashboard = ({ navigateTo }) => {
         }
     };
 
-    const handleSaveTargetCalories = async () => {
-        setError('');
-        if (!userId) {
-            setError("You must be logged in to save target calories.");
-            return;
-        }
-        if (targetCalories === '' || isNaN(parseFloat(targetCalories)) || parseFloat(targetCalories) <= 0) {
-            setError("Please enter a valid positive number for target calories.");
-            return;
-        }
-
-        try {
-            if (userProfileDocRef) {
-                await setDoc(userProfileDocRef, { targetCalories: parseFloat(targetCalories) }, { merge: true });
-                showCustomMessage('Target calories saved!', 'success');
-            }
-        } catch (err) {
-            console.error("Error saving target calories:", err);
-            setError("Failed to save target calories. Please try again.");
-        }
-    };
-
     const isDashboardLoading = loadingAuth || loadingWeightData || loadingUserProfile;
 
     if (isDashboardLoading) {
@@ -485,24 +459,6 @@ const Dashboard = ({ navigateTo }) => {
                         </button>
                     </div>
                 </div>
-                {/* Navigation Bar */}
-                <nav className="bg-blue-800 text-white mt-4 py-2 shadow-md">
-                    <div className="max-w-4xl mx-auto flex justify-around items-center">
-                        <button
-                            onClick={() => navigateTo('dashboard')}
-                            className="px-4 py-2 rounded-md hover:bg-blue-600 transition duration-200 text-lg font-medium"
-                        >
-                            Dashboard
-                        </button>
-                        <button
-                            onClick={() => navigateTo('bmiCalculator')}
-                            className="px-4 py-2 rounded-md hover:bg-blue-600 transition duration-200 text-lg font-medium"
-                        >
-                            BMI Calculator
-                        </button>
-                        {/* Future navigation items can go here */}
-                    </div>
-                </nav>
             </header>
 
             <main className="flex-grow max-w-4xl mx-auto p-6 bg-white rounded-xl shadow-lg my-8">
@@ -513,37 +469,6 @@ const Dashboard = ({ navigateTo }) => {
                     </div>
                 )}
 
-                {/* Target Calories Section */}
-                <section className="mb-8 p-6 border border-gray-200 rounded-lg shadow-sm bg-white">
-                    <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Your Daily Goals</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
-                        <div>
-                            <label htmlFor="targetCalories" className="block text-gray-700 text-sm font-semibold mb-2">
-                                Target Daily Calories (kcal):
-                            </label>
-                            <input
-                                type="number"
-                                id="targetCalories"
-                                value={targetCalories}
-                                onChange={(e) => setTargetCalories(e.target.value)}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
-                                placeholder="e.g., 2000"
-                                required
-                            />
-                        </div>
-                        <div className="md:col-span-1">
-                            <button
-                                onClick={handleSaveTargetCalories}
-                                className="w-full bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2.5 px-4 rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50 transition duration-300 ease-in-out transform hover:scale-105"
-                            >
-                                Save Target
-                            </button>
-                        </div>
-                    </div>
-                </section>
-
-
-                {/* Add Weight Section */}
                 <section className="mb-8 p-6 border border-gray-200 rounded-lg shadow-sm bg-white">
                     <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Add Your Weight</h2>
                     <form onSubmit={addWeightEntry} className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -655,227 +580,6 @@ const Dashboard = ({ navigateTo }) => {
     );
 };
 
-// --- BMI Calculator Component ---
-const BMICalculator = ({ navigateTo }) => {
-    const { currentUser } = useContext(AuthContext);
-    const [heightFt, setHeightFt] = useState('');
-    const [heightIn, setHeightIn] = useState('');
-    const [bmi, setBmi] = useState(null);
-    const [bmiCategory, setBmiCategory] = useState('');
-    const [error, setError] = useState('');
-    const [loadingHeight, setLoadingHeight] = useState(true);
-
-    const userId = currentUser?.uid;
-    const userProfileDocRef = userId ? doc(db, `artifacts/${appId}/users/${userId}/profile/userProfile`) : null;
-
-    // Load height from Firestore
-    useEffect(() => {
-        if (!userProfileDocRef) {
-            setLoadingHeight(false);
-            return;
-        }
-
-        const fetchHeight = async () => {
-            try {
-                const docSnap = await getDoc(userProfileDocRef);
-                if (docSnap.exists()) {
-                    const data = docSnap.data();
-                    setHeightFt(data.heightFt || '');
-                    setHeightIn(data.heightIn || '');
-                }
-            } catch (err) {
-                console.error("Error loading height:", err);
-                setError("Failed to load height. Please try again.");
-            } finally {
-                setLoadingHeight(false);
-            }
-        };
-        fetchHeight();
-    }, [userProfileDocRef]);
-
-    const handleCalculateBMI = async () => {
-        setError('');
-        if (heightFt === '' || heightIn === '' || isNaN(parseFloat(heightFt)) || isNaN(parseFloat(heightIn))) {
-            setError('Please enter valid height in feet and inches.');
-            setBmi(null);
-            setBmiCategory('');
-            return;
-        }
-
-        const totalInches = (parseFloat(heightFt) * 12) + parseFloat(heightIn);
-        let currentWeight;
-        
-        createInputPrompt("Please enter your current weight in pounds for BMI calculation:", (confirmed, weightValue) => {
-            if (confirmed) {
-                const parsedWeight = parseFloat(weightValue);
-
-                if (isNaN(parsedWeight) || parsedWeight <= 0) {
-                    setError("Current weight is required and must be a positive number for BMI calculation.");
-                    setBmi(null);
-                    setBmiCategory('');
-                    return;
-                }
-                currentWeight = parsedWeight;
-
-                if (totalInches <= 0 || currentWeight <= 0) {
-                    setError('Height and weight must be positive values.');
-                    setBmi(null);
-                    setBmiCategory('');
-                    return;
-                }
-
-                const heightMeters = totalInches * 0.0254;
-                const weightKg = currentWeight * 0.453592;
-                const calculatedBmi = weightKg / (heightMeters * heightMeters);
-                setBmi(calculatedBmi);
-
-                let category = '';
-                if (calculatedBmi < 18.5) {
-                    category = 'Underweight';
-                } else if (calculatedBmi >= 18.5 && calculatedBmi < 24.9) {
-                    category = 'Normal weight';
-                } else if (calculatedBmi >= 25 && calculatedBmi < 29.9) {
-                    category = 'Overweight';
-                } else {
-                    category = 'Obesity';
-                }
-                setBmiCategory(category);
-
-                if (userProfileDocRef) {
-                    setDoc(userProfileDocRef, { heightFt: parseFloat(heightFt), heightIn: parseFloat(heightIn) }, { merge: true })
-                        .then(() => showCustomMessage('Height saved successfully!', 'success'))
-                        .catch((err) => {
-                            console.error("Error saving height:", err);
-                            setError("Failed to save height. Please try again.");
-                        });
-                }
-            } else {
-                setError("BMI calculation cancelled. Current weight not provided.");
-                setBmi(null);
-                setBmiCategory('');
-            }
-        }, true);
-    };
-
-    const createInputPrompt = (message, onConfirmCallback, showInput = false) => {
-        const promptBox = document.createElement('div');
-        promptBox.className = "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-8 rounded-lg shadow-xl z-50 text-center";
-        promptBox.innerHTML = `
-            <p class="text-lg font-semibold mb-4">${message}</p>
-            ${showInput ? '<input type="number" id="bmiWeightInput" class="w-full p-2 border rounded mb-4" placeholder="Enter weight in lbs">' : ''}
-            <div class="flex justify-center space-x-4">
-                <button id="promptOk" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">OK</button>
-                <button id="promptCancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancel</button>
-            </div>
-        `;
-        document.body.appendChild(promptBox);
-
-        document.getElementById('promptOk').onclick = () => {
-            const weightInput = document.getElementById('bmiWeightInput');
-            onConfirmCallback(true, weightInput ? weightInput.value : null);
-            promptBox.remove();
-        };
-        document.getElementById('promptCancel').onclick = () => {
-            onConfirmCallback(false, null);
-            promptBox.remove();
-        };
-    };
-
-
-    if (loadingHeight) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-100">
-                <div className="flex flex-col items-center">
-                    <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
-                    <p className="text-gray-700 text-lg">Loading BMI data...</p>
-                </div>
-            </div>
-        );
-    }
-
-    return (
-        <div className="p-6 bg-white rounded-xl shadow-lg">
-            <header className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-4 shadow-lg mb-8 rounded-lg">
-                <div className="max-w-4xl mx-auto flex justify-between items-center">
-                    <h1 className="text-3xl font-extrabold tracking-tight">BMI Calculator</h1>
-                    <button
-                        onClick={() => navigateTo('dashboard')}
-                        className="bg-white text-blue-600 px-4 py-2 rounded-full font-semibold shadow-md hover:bg-gray-100 transition duration-300 ease-in-out"
-                    >
-                        Back to Dashboard
-                    </button>
-                </div>
-            </header>
-            <main>
-                {error && (
-                    <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6" role="alert">
-                        <strong className="font-bold">Error!</strong>
-                        <span className="block sm:inline ml-2">{error}</span>
-                    </div>
-                )}
-                <section className="mb-8 p-6 border border-gray-200 rounded-lg shadow-sm bg-white">
-                    <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Calculate Your BMI</h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label htmlFor="heightFt" className="block text-gray-700 text-sm font-semibold mb-2">
-                                Height (Feet):
-                            </label>
-                            <input
-                                type="number"
-                                id="heightFt"
-                                value={heightFt}
-                                onChange={(e) => setHeightFt(e.target.value)}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
-                                placeholder="e.g., 5"
-                            />
-                        </div>
-                        <div>
-                            <label htmlFor="heightIn" className="block text-gray-700 text-sm font-semibold mb-2">
-                                Height (Inches):
-                            </label>
-                            <input
-                                type="number"
-                                id="heightIn"
-                                value={heightIn}
-                                onChange={(e) => setHeightIn(e.target.value)}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition duration-200"
-                                placeholder="e.g., 8 (for 5'8'')"
-                            />
-                        </div>
-                        <div className="md:col-span-2">
-                            <button
-                                onClick={handleCalculateBMI}
-                                className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-300 ease-in-out transform hover:scale-105"
-                            >
-                                Calculate BMI
-                            </button>
-                        </div>
-                    </div>
-                </section>
-
-                {bmi && (
-                    <section className="p-6 border border-gray-200 rounded-lg shadow-sm bg-white text-center">
-                        <h2 className="text-2xl font-bold text-gray-800 mb-4">Your BMI:</h2>
-                        <p className="text-5xl font-extrabold text-blue-700 mb-2">
-                            {bmi.toFixed(2)}
-                        </p>
-                        <p className="text-xl text-gray-700">
-                            Category: <span className="font-semibold">{bmiCategory}</span>
-                        </p>
-                        <p className="text-sm text-gray-500 mt-4">
-                            BMI Categories:
-                            <br/>Underweight = {'<'}18.5
-                            <br/>Normal weight = 18.5–24.9
-                            <br/>Overweight = 25–29.9
-                            <br/>Obesity = {'\u2265'}30
-                        </p>
-                    </section>
-                )}
-            </main>
-        </div>
-    );
-};
-
 // --- Main App Component ---
 export default function App() {
     return (
@@ -887,14 +591,10 @@ export default function App() {
 
 const AppContent = () => {
     const { currentUser, loadingAuth } = useContext(AuthContext);
-    const [currentPage, setCurrentPage] = useState('dashboard');
-
-    const navigateTo = (page) => {
-        setCurrentPage(page);
-    };
+    // Removed currentPage state as navigation is no longer present.
 
     // Overall loading state for the entire application
-    const isAppLoading = loadingAuth; // Now AppContent only cares about auth loading
+    const isAppLoading = loadingAuth;
 
     if (isAppLoading) {
         return (
@@ -911,44 +611,8 @@ const AppContent = () => {
         return <LoginPage />;
     }
 
-    let PageComponent;
-    switch (currentPage) {
-        case 'dashboard':
-            PageComponent = <Dashboard navigateTo={navigateTo} />;
-            break;
-        case 'bmiCalculator':
-            PageComponent = <BMICalculator navigateTo={navigateTo} />;
-            break;
-        default:
-            PageComponent = <Dashboard navigateTo={navigateTo} />;
-            break;
-    }
-
-    return (
-        <div className="min-h-screen flex flex-col bg-gray-50 font-inter">
-            {PageComponent}
-            <style>
-                {/* Custom styles for loader */}
-                {`
-                .loader {
-                    border-top-color: #3498db;
-                    -webkit-animation: spinner 1.5s linear infinite;
-                    animation: spinner 1.5s linear infinite;
-                }
-
-                @-webkit-keyframes spinner {
-                    0% { -webkit-transform: rotate(0deg); }
-                    100% { -webkit-transform: rotate(360deg); }
-                }
-
-                @keyframes spinner {
-                    0% { transform: rotate(0deg); }
-                    100% { transform: rotate(360deg); }
-                }
-                `}
-            </style>
-        </div>
-    );
+    // Directly render Dashboard as there are no other pages in this version
+    return <Dashboard />;
 };
 
 const rootElement = document.getElementById('root');
