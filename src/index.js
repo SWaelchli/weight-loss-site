@@ -1,4 +1,6 @@
 import React, { useState, useEffect, createContext, useContext } from 'react';
+// Import ReactDOM from react-dom/client for React 18+
+import ReactDOM from 'react-dom/client'; 
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInAnonymously, signInWithCustomToken, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, collection, query, where, addDoc, getDocs, onSnapshot, deleteDoc, setDoc } from 'firebase/firestore';
@@ -10,7 +12,7 @@ import { getFirestore, doc, collection, query, where, addDoc, getDocs, onSnapsho
 // Global variables provided by the Canvas environment
 const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? initialAuthToken : null; // Corrected initialAuthToken usage
 
 // Initialize Firebase App
 const app = initializeApp(firebaseConfig);
@@ -36,6 +38,7 @@ const AuthProvider = ({ children }) => {
 
         // Attempt to sign in with custom token if available (for Canvas environment)
         const signInWithCanvasToken = async () => {
+            // Only attempt if initialAuthToken exists and user is not already set
             if (initialAuthToken && !currentUser) {
                 try {
                     await signInWithCustomToken(auth, initialAuthToken);
@@ -48,7 +51,7 @@ const AuthProvider = ({ children }) => {
                         console.error("Error signing in anonymously:", anonError);
                     }
                 }
-            } else if (!currentUser) { // If no initialAuthToken, sign in anonymously
+            } else if (!currentUser) { // If no initialAuthToken and no user, sign in anonymously
                  try {
                     await signInAnonymously(auth);
                 } catch (anonError) {
@@ -62,7 +65,7 @@ const AuthProvider = ({ children }) => {
         }
 
         return () => unsubscribe();
-    }, [initialAuthToken, currentUser, loadingAuth]);
+    }, [initialAuthToken, currentUser, loadingAuth]); // Added currentUser and loadingAuth to dependencies
 
     return (
         <AuthContext.Provider value={{ currentUser, loadingAuth, auth }}>
@@ -271,7 +274,7 @@ const Dashboard = () => {
                         type: 'time',
                         time: {
                             unit: 'day',
-                            tooltipFormat: 'MMM D, YYYY', // Corrected format for dates
+                            tooltipFormat: 'MMM D,YYYY', // Corrected format for dates
                             displayFormats: {
                                 day: 'MMM D'
                             }
@@ -626,3 +629,18 @@ const AppContent = () => {
     // Otherwise, show the main dashboard
     return <Dashboard />;
 };
+
+// --- Render the React App ---
+// This is the crucial part that mounts your React application to the DOM.
+// It uses ReactDOM.createRoot for React 18+ concurrent mode.
+const rootElement = document.getElementById('root');
+if (rootElement) {
+    const root = ReactDOM.createRoot(rootElement);
+    root.render(
+        <React.StrictMode>
+            <App />
+        </React.StrictMode>
+    );
+} else {
+    console.error("Root element with ID 'root' not found in the HTML.");
+}
