@@ -2,14 +2,15 @@ import React, { useState, useEffect, createContext, useContext } from 'react';
 // Import ReactDOM from react-dom/client for React 18+
 import ReactDOM from 'react-dom/client'; 
 import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, signInWithCustomToken, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth'; // Removed signInAnonymously import
 import { getFirestore, doc, collection, query, where, addDoc, getDocs, onSnapshot, deleteDoc, setDoc } from 'firebase/firestore';
 // Chart and adapter are now loaded via CDN in index.html, no direct import needed here
 // import Chart from 'chart.js/auto'; // This line is commented out as Chart is globally available
 // import 'chartjs-adapter-date-fns'; // This line is commented out as adapter is globally available
 
 // --- Firebase Initialization ---
-// Global variables provided by the Canvas environment
+// The actual Firebase configuration for your project is now hardcoded here.
+// This ensures the app can initialize Firebase correctly when deployed on Netlify.
 const firebaseConfig = {
   apiKey: "AIzaSyBstQSGGPn9O5i91lOHqpykQuBqqt9yQhY",
   authDomain: "weight-loss-tracker-app-ff93a.firebaseapp.com",
@@ -18,8 +19,11 @@ const firebaseConfig = {
   messagingSenderId: "419438071189",
   appId: "1:419438071189:web:6723d25c037ce03e63fa9c"
 };
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? initialAuthToken : null; // Corrected initialAuthToken usage
+
+// We use the projectId from your firebaseConfig as the appId for Firestore rules consistency.
+const appId = firebaseConfig.projectId; 
+// initialAuthToken is typically for Canvas environment previews and is kept for compatibility.
+const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
 
 // Initialize Firebase App
 const app = initializeApp(firebaseConfig);
@@ -43,28 +47,19 @@ const AuthProvider = ({ children }) => {
             setLoadingAuth(false);
         });
 
-        // Attempt to sign in with custom token if available (for Canvas environment)
+        // This function handles the initial sign-in attempt for the Canvas environment.
+        // On Netlify, initialAuthToken will be null, and no anonymous sign-in is desired.
         const signInWithCanvasToken = async () => {
-            // Only attempt if initialAuthToken exists and user is not already set
             if (initialAuthToken && !currentUser) {
                 try {
                     await signInWithCustomToken(auth, initialAuthToken);
                 } catch (error) {
-                    console.error("Error signing in with custom token:", error);
-                    // Fallback to anonymous sign-in if custom token fails or is not provided
-                    try {
-                        await signInAnonymously(auth);
-                    } catch (anonError) {
-                        console.error("Error signing in anonymously:", anonError);
-                    }
-                }
-            } else if (!currentUser) { // If no initialAuthToken and no user, sign in anonymously
-                 try {
-                    await signInAnonymously(auth);
-                } catch (anonError) {
-                    console.error("Error signing in anonymously:", anonError);
+                    console.error("Error signing in with custom token (Canvas):", error);
+                    // On Netlify, we explicitly do NOT want anonymous sign-in if initialAuthToken fails/is absent.
+                    // The app should just present the login page if not authenticated.
                 }
             }
+            // No 'else if (!currentUser)' for anonymous sign-in here, as desired.
         };
 
         if (loadingAuth) { // Only try initial sign-in if still loading auth
@@ -281,9 +276,10 @@ const Dashboard = () => {
                         type: 'time',
                         time: {
                             unit: 'day',
-                            tooltipFormat: 'MMM D,YYYY', // Corrected format for dates
+                            // CORRECTED: 'D' for day of month should be 'd' in date-fns format string
+                            tooltipFormat: 'MMM d,yyyy',
                             displayFormats: {
-                                day: 'MMM D'
+                                day: 'MMM d' // CORRECTED: 'D' for day of month should be 'd'
                             }
                         },
                         title: {
@@ -622,14 +618,15 @@ const AppContent = () => {
             <div className="min-h-screen flex items-center justify-center bg-gray-100">
                 <div className="flex flex-col items-center">
                     <div className="loader ease-linear rounded-full border-4 border-t-4 border-gray-200 h-12 w-12 mb-4"></div>
-                    <p className="text-gray-700 text-lg">Loading application...</p>
+                    <p className="text-gray-700 text-lg">Loading...</p>
                 </div>
             </div>
         );
     }
 
     // If currentUser is null (not logged in), show login page
-    if (!currentUser || currentUser.isAnonymous) { // isAnonymous check to ensure real user login
+    // Removed the .isAnonymous check here, if currentUser is null, we present LoginPage
+    if (!currentUser) { 
         return <LoginPage />;
     }
 
