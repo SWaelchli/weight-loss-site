@@ -10,7 +10,14 @@ import { getFirestore, doc, collection, query, where, addDoc, getDocs, onSnapsho
 
 // --- Firebase Initialization ---
 // Global variables provided by the Canvas environment
-const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+const firebaseConfig = {
+  apiKey: "AIzaSyBstQSGGPn9O5i91lOHqpykQuBqqt9yQhY",
+  authDomain: "weight-loss-tracker-app-ff93a.firebaseapp.com",
+  projectId: "weight-loss-tracker-app-ff93a",
+  storageBucket: "weight-loss-tracker-app-ff93a.firebasestorage.app",
+  messagingSenderId: "419438071189",
+  appId: "1:419438071189:web:6723d25c037ce03e63fa9c"
+};
 const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? initialAuthToken : null; // Corrected initialAuthToken usage
 
