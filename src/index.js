@@ -17,6 +17,7 @@ const firebaseConfig = {
 };
 
 const appId = firebaseConfig.projectId;
+// Corrected the initialAuthToken reference for Canvas compatibility.
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
 const app = initializeApp(firebaseConfig);
@@ -238,8 +239,8 @@ const Dashboard = ({ navigateTo }) => {
 
         return () => {
             unsubscribeWeight();
-        }; // Only unsubscribe from weight data for now
-    }, [userId, userProfileDocRef]); // userProfileDocRef added as dependency
+        };
+    }, [userId, userProfileDocRef]);
 
     useEffect(() => {
         const Chart = window.Chart;
@@ -363,7 +364,7 @@ const Dashboard = ({ navigateTo }) => {
                         date: newDate,
                         weight: newWeight,
                         notes: newNotes
-                    }, { merge: true }); // Use merge to update existing fields without overwriting
+                    }, { merge: true });
                     showCustomMessage('Entry updated successfully!', 'success');
                 } else {
                     await addDoc(collection(db, `artifacts/${appId}/users/${userId}/weightEntries`), {
@@ -434,7 +435,6 @@ const Dashboard = ({ navigateTo }) => {
         }
 
         try {
-            // Update the userProfile document with targetCalories
             if (userProfileDocRef) {
                 await setDoc(userProfileDocRef, { targetCalories: parseFloat(targetCalories) }, { merge: true });
                 showCustomMessage('Target calories saved!', 'success');
@@ -535,7 +535,7 @@ const Dashboard = ({ navigateTo }) => {
 
                 {/* Add Weight Section */}
                 <section className="mb-8 p-6 border border-gray-200 rounded-lg shadow-sm bg-white">
-                    <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Add Your Weight</h2>
+                    <h2 className="2xl font-bold text-gray-800 mb-6 text-center">Add Your Weight</h2>
                     <form onSubmit={addWeightEntry} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label htmlFor="date" className="block text-gray-700 text-sm font-semibold mb-2">
@@ -744,8 +744,9 @@ const BMICalculator = ({ navigateTo }) => {
                 setBmi(null);
                 setBmiCategory('');
             }
-        }, true); // The `true` indicates it's a prompt for input, not just a yes/no.
+        }, true);
     };
+
     // Helper function for the BMI prompt to create an input field
     const createInputPrompt = (message, onConfirm, showInput = false) => {
         const promptBox = document.createElement('div');
@@ -770,11 +771,9 @@ const BMICalculator = ({ navigateTo }) => {
         };
     };
 
-    // Replace window.prompt with custom input prompt for BMI
     const handleCalculateBMIWithPrompt = () => {
         createInputPrompt("Please enter your current weight in pounds for BMI calculation:", (confirmed) => {
             if (confirmed) {
-                // Now retrieve the value from the newly created input field
                 const weightValue = document.getElementById('bmiWeightInput').value;
                 const parsedWeight = parseFloat(weightValue);
 
@@ -784,7 +783,6 @@ const BMICalculator = ({ navigateTo }) => {
                     setBmiCategory('');
                     return;
                 }
-                // Continue with the rest of BMI calculation logic
                 const totalInches = (parseFloat(heightFt) * 12) + parseFloat(heightIn);
                 const heightMeters = totalInches * 0.0254;
                 const weightKg = parsedWeight * 0.453592;
@@ -803,7 +801,6 @@ const BMICalculator = ({ navigateTo }) => {
                 }
                 setBmiCategory(category);
 
-                // Save height to Firestore
                 if (userProfileDocRef) {
                     setDoc(userProfileDocRef, { heightFt: parseFloat(heightFt), heightIn: parseFloat(heightIn) }, { merge: true })
                         .then(() => showCustomMessage('Height saved successfully!', 'success'))
@@ -817,7 +814,7 @@ const BMICalculator = ({ navigateTo }) => {
                 setBmi(null);
                 setBmiCategory('');
             }
-        }, true); // `true` means show input field
+        }, true);
     };
 
 
