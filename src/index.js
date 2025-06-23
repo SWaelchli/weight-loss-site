@@ -87,11 +87,11 @@ const showCustomConfirm = (message, onConfirm) => {
     document.body.appendChild(confirmBox);
 
     document.getElementById('confirmYes').onclick = () => {
-        onConfirm(true); // Pass true for confirmation
+        onConfirm(true);
         confirmBox.remove();
     };
     document.getElementById('confirmNo').onclick = () => {
-        onConfirm(false); // Pass false for cancellation
+        onConfirm(false);
         confirmBox.remove();
     };
 };
@@ -173,9 +173,10 @@ const Dashboard = ({ navigateTo }) => {
     const [date, setDate] = useState('');
     const [weight, setWeight] = useState('');
     const [notes, setNotes] = useState('');
-    const [targetCalories, setTargetCalories] = useState(''); // New state for target calories
+    const [targetCalories, setTargetCalories] = useState('');
     const [weightData, setWeightData] = useState([]);
-    const [loadingData, setLoadingData] = useState(true);
+    const [loadingWeightData, setLoadingWeightData] = useState(true); // Specific loading for weight
+    const [loadingUserProfile, setLoadingUserProfile] = useState(true); // Specific loading for profile
     const [error, setError] = useState('');
     const chartRef = React.useRef(null);
     const chartInstanceRef = React.useRef(null);
@@ -192,17 +193,20 @@ const Dashboard = ({ navigateTo }) => {
         setDate(`${year}-${month}-${day}`);
     }, []);
 
+    // Effect for fetching ALL user-specific data (weight entries & user profile)
     useEffect(() => {
         if (!userId) {
             setWeightData([]);
-            setLoadingData(false);
+            setLoadingWeightData(false);
+            setLoadingUserProfile(false);
             return;
         }
 
-        setLoadingData(true);
+        setLoadingWeightData(true);
+        setLoadingUserProfile(true);
         setError('');
 
-        // Fetch weight data
+        // Fetch weight data using onSnapshot (real-time listener)
         const q = query(collection(db, `artifacts/${appId}/users/${userId}/weightEntries`));
         const unsubscribeWeight = onSnapshot(q, (snapshot) => {
             const fetchedData = [];
@@ -211,14 +215,14 @@ const Dashboard = ({ navigateTo }) => {
             });
             fetchedData.sort((a, b) => new Date(a.date) - new Date(b.date));
             setWeightData(fetchedData);
-            setLoadingData(false);
+            setLoadingWeightData(false); // Set weight data loading to false
         }, (err) => {
             console.error("Error fetching weight data:", err);
             setError("Failed to load weight data. Please try again.");
-            setLoadingData(false);
+            setLoadingWeightData(false); // Set to false even on error
         });
 
-        // Fetch user profile data (including targetCalories)
+        // Fetch user profile data using getDoc (one-time fetch)
         const fetchUserProfile = async () => {
             if (userProfileDocRef) {
                 try {
@@ -226,20 +230,32 @@ const Dashboard = ({ navigateTo }) => {
                     if (docSnap.exists()) {
                         const data = docSnap.data();
                         setTargetCalories(data.targetCalories || '');
+                        // Also ensure height is loaded for BMI component if needed later
+                        // This Dashboard doesn't use height, but it's good practice for profile
+                    } else {
+                        // Profile document doesn't exist yet, which is fine for new users
+                        setTargetCalories('');
                     }
                 } catch (err) {
                     console.error("Error loading user profile:", err);
                     setError("Failed to load user profile data.");
+                } finally {
+                    setLoadingUserProfile(false); // Always set profile loading to false
                 }
+            } else {
+                setLoadingUserProfile(false); // No userProfileDocRef (e.g., userId is null), so stop loading profile
             }
         };
         fetchUserProfile();
 
 
+        // Cleanup function for useEffect
         return () => {
-            unsubscribeWeight();
+            unsubscribeWeight(); // Unsubscribe from the real-time weight listener
+            // No explicit cleanup needed for getDoc, as it's a one-time fetch
         };
-    }, [userId, userProfileDocRef]);
+    }, [userId, userProfileDocRef]); // Dependencies: userId and userProfileDocRef
+
 
     useEffect(() => {
         const Chart = window.Chart;
@@ -399,8 +415,8 @@ const Dashboard = ({ navigateTo }) => {
             setError("You must be logged in to delete entries.");
             return;
         }
-        showCustomConfirm('Are you sure you want to delete this entry?', async (confirmed) => { // Added confirmed parameter
-            if (confirmed) { // Check if confirmed is true
+        showCustomConfirm('Are you sure you want to delete this entry?', async (confirmed) => {
+            if (confirmed) {
                 try {
                     await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/weightEntries`, id));
                     setError('');
@@ -446,7 +462,10 @@ const Dashboard = ({ navigateTo }) => {
         }
     };
 
-    if (loadingAuth || loadingData) {
+    // Combine all loading states for the Dashboard
+    const isDashboardLoading = loadingAuth || loadingWeightData || loadingUserProfile;
+
+    if (isDashboardLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-100">
                 <div className="flex flex-col items-center">
@@ -695,17 +714,18 @@ const BMICalculator = ({ navigateTo }) => {
 
         const totalInches = (parseFloat(heightFt) * 12) + parseFloat(heightIn);
         let currentWeight;
-        // Using showCustomConfirm to replace window.prompt for better UI/UX
-        createInputPrompt("Please enter your current weight in pounds for BMI calculation:", (confirmed) => {
+        
+        createInputPrompt("Please enter your current weight in pounds for BMI calculation:", (confirmed, weightValue) => {
             if (confirmed) {
-                const weightPrompt = document.getElementById('bmiWeightInput').value; // Assuming an input field is created for this
-                if (weightPrompt === '' || isNaN(parseFloat(weightPrompt))) {
-                    setError("Current weight is required for BMI calculation.");
+                const parsedWeight = parseFloat(weightValue);
+
+                if (isNaN(parsedWeight) || parsedWeight <= 0) {
+                    setError("Current weight is required and must be a positive number for BMI calculation.");
                     setBmi(null);
                     setBmiCategory('');
                     return;
                 }
-                currentWeight = parseFloat(weightPrompt);
+                currentWeight = parsedWeight;
 
                 if (totalInches <= 0 || currentWeight <= 0) {
                     setError('Height and weight must be positive values.');
@@ -716,77 +736,6 @@ const BMICalculator = ({ navigateTo }) => {
 
                 const heightMeters = totalInches * 0.0254;
                 const weightKg = currentWeight * 0.453592;
-                const calculatedBmi = weightKg / (heightMeters * heightMeters);
-                setBmi(calculatedBmi);
-
-                let category = '';
-                if (calculatedBmi < 18.5) {
-                    category = 'Underweight';
-                } else if (calculatedBmi >= 18.5 && calculatedBmi < 24.9) {
-                    category = 'Normal weight';
-                } else if (calculatedBmi >= 25 && calculatedBmi < 29.9) {
-                    category = 'Overweight';
-                } else {
-                    category = 'Obesity';
-                }
-                setBmiCategory(category);
-
-                // Save height to Firestore
-                if (userProfileDocRef) {
-                    setDoc(userProfileDocRef, { heightFt: parseFloat(heightFt), heightIn: parseFloat(heightIn) }, { merge: true })
-                        .then(() => showCustomMessage('Height saved successfully!', 'success'))
-                        .catch((err) => {
-                            console.error("Error saving height:", err);
-                            setError("Failed to save height. Please try again.");
-                        });
-                }
-            } else {
-                setError("BMI calculation cancelled. Current weight not provided.");
-                setBmi(null);
-                setBmiCategory('');
-            }
-        }, true); // The `true` indicates it's a prompt for input, not just a yes/no.
-    };
-
-    // Helper function for the BMI prompt to create an input field
-    const createInputPrompt = (message, onConfirmCallback, showInput = false) => { // Renamed onConfirm to onConfirmCallback
-        const promptBox = document.createElement('div');
-        promptBox.className = "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-8 rounded-lg shadow-xl z-50 text-center";
-        promptBox.innerHTML = `
-            <p class="text-lg font-semibold mb-4">${message}</p>
-            ${showInput ? '<input type="number" id="bmiWeightInput" class="w-full p-2 border rounded mb-4" placeholder="Enter weight in lbs">' : ''}
-            <div class="flex justify-center space-x-4">
-                <button id="promptOk" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">OK</button>
-                <button id="promptCancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancel</button>
-            </div>
-        `;
-        document.body.appendChild(promptBox);
-
-        document.getElementById('promptOk').onclick = () => {
-            onConfirmCallback(true);
-            promptBox.remove();
-        };
-        document.getElementById('promptCancel').onclick = () => {
-            onConfirmCallback(false);
-            promptBox.remove();
-        };
-    };
-
-    const handleCalculateBMIWithPrompt = () => {
-        createInputPrompt("Please enter your current weight in pounds for BMI calculation:", (confirmed) => {
-            if (confirmed) {
-                const weightValue = document.getElementById('bmiWeightInput').value;
-                const parsedWeight = parseFloat(weightValue);
-
-                if (isNaN(parsedWeight) || parsedWeight <= 0) {
-                    setError("Current weight is required and must be a positive number for BMI calculation.");
-                    setBmi(null);
-                    setBmiCategory('');
-                    return;
-                }
-                const totalInches = (parseFloat(heightFt) * 12) + parseFloat(heightIn);
-                const heightMeters = totalInches * 0.0254;
-                const weightKg = parsedWeight * 0.453592;
                 const calculatedBmi = weightKg / (heightMeters * heightMeters);
                 setBmi(calculatedBmi);
 
@@ -816,6 +765,30 @@ const BMICalculator = ({ navigateTo }) => {
                 setBmiCategory('');
             }
         }, true);
+    };
+
+    const createInputPrompt = (message, onConfirmCallback, showInput = false) => {
+        const promptBox = document.createElement('div');
+        promptBox.className = "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-8 rounded-lg shadow-xl z-50 text-center";
+        promptBox.innerHTML = `
+            <p class="text-lg font-semibold mb-4">${message}</p>
+            ${showInput ? '<input type="number" id="bmiWeightInput" class="w-full p-2 border rounded mb-4" placeholder="Enter weight in lbs">' : ''}
+            <div class="flex justify-center space-x-4">
+                <button id="promptOk" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">OK</button>
+                <button id="promptCancel" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded-lg">Cancel</button>
+            </div>
+        `;
+        document.body.appendChild(promptBox);
+
+        document.getElementById('promptOk').onclick = () => {
+            const weightInput = document.getElementById('bmiWeightInput');
+            onConfirmCallback(true, weightInput ? weightInput.value : null);
+            promptBox.remove();
+        };
+        document.getElementById('promptCancel').onclick = () => {
+            onConfirmCallback(false, null);
+            promptBox.remove();
+        };
     };
 
 
@@ -881,7 +854,7 @@ const BMICalculator = ({ navigateTo }) => {
                         </div>
                         <div className="md:col-span-2">
                             <button
-                                onClick={handleCalculateBMIWithPrompt}
+                                onClick={handleCalculateBMI}
                                 className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-300 ease-in-out transform hover:scale-105"
                             >
                                 Calculate BMI
@@ -930,7 +903,10 @@ const AppContent = () => {
         setCurrentPage(page);
     };
 
-    if (loadingAuth) {
+    // Overall loading state for the entire application
+    const isAppLoading = loadingAuth; // Now AppContent only cares about auth loading
+
+    if (isAppLoading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-gray-100">
                 <div className="flex flex-col items-center">
