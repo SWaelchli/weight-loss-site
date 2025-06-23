@@ -3,7 +3,6 @@ import ReactDOM from 'react-dom/client';
 import { initializeApp } from 'firebase/app';
 import { getAuth, signInWithCustomToken, signInWithEmailAndPassword, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, doc, collection, query, where, addDoc, getDocs, onSnapshot, deleteDoc, setDoc, getDoc } from 'firebase/firestore';
-// Chart and adapter are now loaded via CDN in index.html, no direct import needed here
 
 // --- Firebase Initialization ---
 // The actual Firebase configuration for your project is now hardcoded here.
@@ -17,7 +16,6 @@ const firebaseConfig = {
 };
 
 const appId = firebaseConfig.projectId;
-// Corrected the initialAuthToken reference for Canvas compatibility.
 const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
 
 const app = initializeApp(firebaseConfig);
@@ -89,10 +87,11 @@ const showCustomConfirm = (message, onConfirm) => {
     document.body.appendChild(confirmBox);
 
     document.getElementById('confirmYes').onclick = () => {
-        onConfirm();
+        onConfirm(true); // Pass true for confirmation
         confirmBox.remove();
     };
     document.getElementById('confirmNo').onclick = () => {
+        onConfirm(false); // Pass false for cancellation
         confirmBox.remove();
     };
 };
@@ -400,14 +399,16 @@ const Dashboard = ({ navigateTo }) => {
             setError("You must be logged in to delete entries.");
             return;
         }
-        showCustomConfirm('Are you sure you want to delete this entry?', async () => {
-            try {
-                await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/weightEntries`, id));
-                setError('');
-                showCustomMessage('Entry deleted successfully.', 'success');
-            } catch (err) {
-                console.error("Error deleting document:", err);
-                setError("Failed to delete entry. Please try again.");
+        showCustomConfirm('Are you sure you want to delete this entry?', async (confirmed) => { // Added confirmed parameter
+            if (confirmed) { // Check if confirmed is true
+                try {
+                    await deleteDoc(doc(db, `artifacts/${appId}/users/${userId}/weightEntries`, id));
+                    setError('');
+                    showCustomMessage('Entry deleted successfully.', 'success');
+                } catch (err) {
+                    console.error("Error deleting document:", err);
+                    setError("Failed to delete entry. Please try again.");
+                }
             }
         });
     };
@@ -535,7 +536,7 @@ const Dashboard = ({ navigateTo }) => {
 
                 {/* Add Weight Section */}
                 <section className="mb-8 p-6 border border-gray-200 rounded-lg shadow-sm bg-white">
-                    <h2 className="2xl font-bold text-gray-800 mb-6 text-center">Add Your Weight</h2>
+                    <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">Add Your Weight</h2>
                     <form onSubmit={addWeightEntry} className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label htmlFor="date" className="block text-gray-700 text-sm font-semibold mb-2">
@@ -695,7 +696,7 @@ const BMICalculator = ({ navigateTo }) => {
         const totalInches = (parseFloat(heightFt) * 12) + parseFloat(heightIn);
         let currentWeight;
         // Using showCustomConfirm to replace window.prompt for better UI/UX
-        showCustomConfirm("Please enter your current weight in pounds for BMI calculation:", (confirmed) => {
+        createInputPrompt("Please enter your current weight in pounds for BMI calculation:", (confirmed) => {
             if (confirmed) {
                 const weightPrompt = document.getElementById('bmiWeightInput').value; // Assuming an input field is created for this
                 if (weightPrompt === '' || isNaN(parseFloat(weightPrompt))) {
@@ -744,11 +745,11 @@ const BMICalculator = ({ navigateTo }) => {
                 setBmi(null);
                 setBmiCategory('');
             }
-        }, true);
+        }, true); // The `true` indicates it's a prompt for input, not just a yes/no.
     };
 
     // Helper function for the BMI prompt to create an input field
-    const createInputPrompt = (message, onConfirm, showInput = false) => {
+    const createInputPrompt = (message, onConfirmCallback, showInput = false) => { // Renamed onConfirm to onConfirmCallback
         const promptBox = document.createElement('div');
         promptBox.className = "fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white p-8 rounded-lg shadow-xl z-50 text-center";
         promptBox.innerHTML = `
@@ -762,11 +763,11 @@ const BMICalculator = ({ navigateTo }) => {
         document.body.appendChild(promptBox);
 
         document.getElementById('promptOk').onclick = () => {
-            onConfirm(true);
+            onConfirmCallback(true);
             promptBox.remove();
         };
         document.getElementById('promptCancel').onclick = () => {
-            onConfirm(false);
+            onConfirmCallback(false);
             promptBox.remove();
         };
     };
@@ -880,7 +881,7 @@ const BMICalculator = ({ navigateTo }) => {
                         </div>
                         <div className="md:col-span-2">
                             <button
-                                onClick={handleCalculateBMIWithPrompt} // Use the new function with custom prompt
+                                onClick={handleCalculateBMIWithPrompt}
                                 className="w-full bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg shadow-md hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 transition duration-300 ease-in-out transform hover:scale-105"
                             >
                                 Calculate BMI
@@ -923,9 +924,8 @@ export default function App() {
 
 const AppContent = () => {
     const { currentUser, loadingAuth } = useContext(AuthContext);
-    const [currentPage, setCurrentPage] = useState('dashboard'); // State to manage current "page"
+    const [currentPage, setCurrentPage] = useState('dashboard');
 
-    // Function to navigate between pages
     const navigateTo = (page) => {
         setCurrentPage(page);
     };
@@ -945,7 +945,6 @@ const AppContent = () => {
         return <LoginPage />;
     }
 
-    // Render current page based on state
     let PageComponent;
     switch (currentPage) {
         case 'dashboard':
@@ -954,7 +953,6 @@ const AppContent = () => {
         case 'bmiCalculator':
             PageComponent = <BMICalculator navigateTo={navigateTo} />;
             break;
-        // Add more cases for future sub-sites here
         default:
             PageComponent = <Dashboard navigateTo={navigateTo} />;
             break;
@@ -963,7 +961,6 @@ const AppContent = () => {
     return (
         <div className="min-h-screen flex flex-col bg-gray-50 font-inter">
             {PageComponent}
-            {/* The footer moved into Dashboard component for a consistent layout per page */}
             <style>
                 {/* Custom styles for loader */}
                 {`
@@ -988,7 +985,6 @@ const AppContent = () => {
     );
 };
 
-// --- Render the React App ---
 const rootElement = document.getElementById('root');
 if (rootElement) {
     const root = ReactDOM.createRoot(rootElement);
